@@ -92,6 +92,23 @@ export const api = {
     return fetchApi<ComparisonReport>(`/compare?${params}`);
   },
 
+  listSystems: (opts: {
+    state?: string;
+    county?: string;
+    risk?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts.state) params.set("state", opts.state);
+    if (opts.county) params.set("county", opts.county);
+    if (opts.risk) params.set("risk", opts.risk);
+    if (opts.limit != null) params.set("limit", String(opts.limit));
+    if (opts.offset != null) params.set("offset", String(opts.offset));
+    const qs = params.toString();
+    return fetchApi<WaterSystemSummary[]>(`/systems${qs ? `?${qs}` : ""}`);
+  },
+
   getMapSystems: (stateCode?: string) =>
     fetchApi<MapSystem[]>(`/map/systems${stateCode ? `?state=${stateCode}` : ""}`),
 

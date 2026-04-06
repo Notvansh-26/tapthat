@@ -82,7 +82,7 @@ export default function Home() {
         )}
 
         {report && !loading && (
-          <section className="mb-12 max-w-2xl">
+          <section className="mb-12">
             <WaterQualityCard report={report} />
           </section>
         )}

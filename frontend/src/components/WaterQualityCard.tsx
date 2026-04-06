@@ -1,10 +1,10 @@
-import type { ZipCodeReport } from "@/lib/api";
+import type { ZipCodeReport, Violation } from "@/lib/api";
 import RiskBadge from "./RiskBadge";
 import {
-  Droplets,
   Users,
   AlertTriangle,
-  ChevronRight,
+  ShieldAlert,
+  ShieldX,
   Building2,
   Calendar,
 } from "lucide-react";
@@ -29,6 +29,17 @@ export default function WaterQualityCard({
     0
   );
 
+  // Split violations into warnings (non-health) and risks (health-based)
+  const allViolations = report.recent_violations.filter(
+    (v) => v.contaminant_name || v.violation_type || v.compliance_begin_date
+  );
+  const warnings = allViolations.filter((v) => !v.is_health_based);
+  const risks = allViolations.filter((v) => v.is_health_based);
+
+  // Derive county and state from water systems
+  const county = report.water_systems[0]?.counties_served;
+  const stateCode = report.water_systems[0]?.pwsid?.substring(0, 2) || "";
+
   return (
     <div className="card overflow-hidden fade-up">
       {/* Top accent gradient */}
@@ -50,9 +61,9 @@ export default function WaterQualityCard({
             <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">
               {report.zip_code}
             </h2>
-            {report.water_systems[0]?.counties_served && (
+            {county && (
               <p className="text-sm text-slate-500 mt-1 font-medium">
-                {report.water_systems[0].counties_served} County, TX
+                {county}{stateCode ? `, ${stateCode}` : ""}
               </p>
             )}
           </div>
@@ -82,106 +93,77 @@ export default function WaterQualityCard({
 
       {!compact && (
         <>
-          {/* Top water systems */}
-          <div className="p-6">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
-              Largest Water Systems
-            </h3>
-            <div className="space-y-2">
-              {report.water_systems
-                .sort((a, b) => (b.population_served || 0) - (a.population_served || 0))
-                .slice(0, 4)
-                .map((s) => (
-                  <div
-                    key={s.pwsid}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50/80 hover:bg-slate-100/80 transition-colors group"
-                  >
-                    <div
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        s.risk_level === "safe" ? "bg-safe" :
-                        s.risk_level === "caution" ? "bg-caution" : "bg-danger"
-                      }`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">
-                        {s.name}
+          {/* Warnings & Risks — two columns */}
+          {allViolations.length > 0 && (
+            <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+              {/* Warnings column (orange) */}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <ShieldAlert className="w-4 h-4 text-caution" />
+                  <h3 className="text-xs font-semibold text-caution-dark uppercase tracking-widest">
+                    Warnings
+                  </h3>
+                  <span className="text-xs font-mono text-slate-300 ml-auto">{warnings.length}</span>
+                </div>
+                {warnings.length > 0 ? (
+                  <div className="space-y-2">
+                    {warnings.slice(0, 5).map((v, i) => (
+                      <ViolationRow key={i} violation={v} variant="warning" />
+                    ))}
+                    {warnings.length > 5 && (
+                      <p className="text-xs text-slate-400 pt-1">
+                        +{warnings.length - 5} more warnings
                       </p>
-                      <p className="text-xs text-slate-400">
-                        {formatNumber(s.population_served || 0)} served · {s.primary_source === "GW" ? "Groundwater" : s.primary_source === "SW" ? "Surface" : s.primary_source || "Unknown"}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
+                    )}
                   </div>
-                ))}
-            </div>
-          </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">No warnings</p>
+                )}
+              </div>
 
-          {/* Violations timeline */}
-          {report.recent_violations.length > 0 && (
-            <div className="px-6 pb-6">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
-                Recent Violations
-              </h3>
-              <div className="space-y-2">
-                {report.recent_violations
-                  .filter((v) => v.contaminant_name || v.violation_type || v.compliance_begin_date)
-                  .slice(0, 4)
-                  .map((v, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 p-3 rounded-xl bg-slate-50/80"
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                        v.is_health_based
-                          ? "bg-danger-light text-danger"
-                          : "bg-caution-light text-caution"
-                      }`}
-                    >
-                      <AlertTriangle className="w-3 h-3" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700">
-                        {v.contaminant_name || "Unknown Contaminant"}
+              {/* Risks column (red) */}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <ShieldX className="w-4 h-4 text-danger" />
+                  <h3 className="text-xs font-semibold text-danger-dark uppercase tracking-widest">
+                    Health Risks
+                  </h3>
+                  <span className="text-xs font-mono text-slate-300 ml-auto">{risks.length}</span>
+                </div>
+                {risks.length > 0 ? (
+                  <div className="space-y-2">
+                    {risks.slice(0, 5).map((v, i) => (
+                      <ViolationRow key={i} violation={v} variant="risk" />
+                    ))}
+                    {risks.length > 5 && (
+                      <p className="text-xs text-slate-400 pt-1">
+                        +{risks.length - 5} more risks
                       </p>
-                      {v.violation_type && (
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {v.violation_type}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2 mt-1">
-                        {v.is_health_based && (
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-danger bg-danger-light px-1.5 py-0.5 rounded">
-                            Health-based
-                          </span>
-                        )}
-                        {v.compliance_begin_date && (
-                          <span className="text-xs text-slate-400 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(v.compliance_begin_date).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    )}
                   </div>
-                ))}
-                {report.recent_violations.filter((v) => v.contaminant_name || v.violation_type || v.compliance_begin_date).length === 0 && (
-                  <p className="text-sm text-slate-400 italic">
-                    Violation details pending data enrichment
-                  </p>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">No health-based risks</p>
                 )}
               </div>
             </div>
           )}
 
+          {allViolations.length === 0 && report.recent_violations.length > 0 && (
+            <div className="p-6">
+              <p className="text-sm text-slate-400 italic">
+                Violation details pending data enrichment
+              </p>
+            </div>
+          )}
+
           {/* Contaminant bars */}
           {report.top_contaminants.length > 0 && (
-            <div className="px-6 pb-6">
+            <div className="p-6 border-t border-slate-100">
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
                 Detected Contaminants
               </h3>
-              <div className="space-y-3">
-                {report.top_contaminants.slice(0, 5).map((c, i) => {
+              <div className="grid md:grid-cols-2 gap-x-8 gap-y-3">
+                {report.top_contaminants.slice(0, 8).map((c, i) => {
                   const ratio = c.exceedance_ratio ?? 0;
                   const pct = Math.min(ratio * 100, 100);
                   const color =
@@ -215,6 +197,35 @@ export default function WaterQualityCard({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function ViolationRow({ violation: v, variant }: { violation: Violation; variant: "warning" | "risk" }) {
+  const isRisk = variant === "risk";
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50/80">
+      <div
+        className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+          isRisk ? "bg-danger-light text-danger" : "bg-caution-light text-caution"
+        }`}
+      >
+        <AlertTriangle className="w-3 h-3" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-700">
+          {v.contaminant_name || "Unknown Contaminant"}
+        </p>
+        {v.violation_type && (
+          <p className="text-xs text-slate-400 mt-0.5">{v.violation_type}</p>
+        )}
+        {v.compliance_begin_date && (
+          <span className="text-xs text-slate-400 flex items-center gap-1 mt-1">
+            <Calendar className="w-3 h-3" />
+            {new Date(v.compliance_begin_date).toLocaleDateString()}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
