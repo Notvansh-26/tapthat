@@ -178,7 +178,7 @@ def ingest_water_systems(conn, state_code: str = "TX"):
     logger.info(f"Found {total} systems (QID: {qid})")
 
     page = 1
-    page_size = 100
+    page_size = 1000
     count = 0
     now = datetime.now(timezone.utc)
 
