@@ -14,7 +14,7 @@ export default function SearchBar({
   onSearch,
   loading = false,
   variant = "hero",
-  placeholder = "Enter a Texas ZIP code",
+  placeholder = "Enter a US ZIP code",
 }: SearchBarProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");

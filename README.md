@@ -1,13 +1,13 @@
 # TapThat 💧
 
-**Know what's in your tap.** — Texas water quality dashboard built on real EPA data.
+**Know what's in your tap.** — US water quality dashboard built on real EPA data.
 
 Live: [tapthat.info](https://tapthat.info)
 
 ## What It Does
 
-- **Search by ZIP** — Enter any Texas ZIP code to see water quality, contaminants, and violations
-- **Interactive Map** — Explore all Texas water systems color-coded by risk level
+- **Search by ZIP** — Enter any US ZIP code to see water quality, contaminants, and violations
+- **Interactive Map** — Explore water systems across all 50 states, color-coded by risk level
 - **Compare ZIP Codes** — Side-by-side comparison of up to 5 areas
 - **Risk Indicators** — Safe / Caution / At Risk ratings based on EPA compliance data
 

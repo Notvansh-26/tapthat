@@ -8,7 +8,7 @@ settings = get_settings()
 
 app = FastAPI(
     title="TapThat API",
-    description="Texas water quality data — know what's in your tap.",
+    description="US water quality data — know what's in your tap.",
     version="1.0.0",
 )
 

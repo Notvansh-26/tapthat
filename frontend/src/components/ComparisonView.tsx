@@ -58,7 +58,7 @@ export default function ComparisonView() {
           </div>
           <div>
             <h2 className="font-semibold text-slate-900">Add ZIP Codes</h2>
-            <p className="text-xs text-slate-400">Up to 5 Texas ZIP codes</p>
+            <p className="text-xs text-slate-400">Up to 5 US ZIP codes</p>
           </div>
         </div>
 

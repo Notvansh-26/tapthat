@@ -59,10 +59,7 @@ export default function USMap({ onStateSelect }: USMapProps) {
 
         L.control.zoom({ position: "topright" }).addTo(map);
 
-        const [geoRes, stateRisks] = await Promise.all([
-          fetch("/geojson/us-states.geojson"),
-          api.getStateRisks(),
-        ]);
+        const geoRes = await fetch("/geojson/us-states.geojson");
 
         if (cancelled) return;
 
@@ -73,6 +70,16 @@ export default function USMap({ onStateSelect }: USMapProps) {
         }
 
         const geoJson = await geoRes.json();
+
+        // Fetch risk data from API — gracefully degrade if backend is down
+        let stateRisks: StateRisk[] = [];
+        try {
+          stateRisks = await api.getStateRisks();
+        } catch {
+          // Backend unavailable — render map with "no data" styling
+        }
+
+        if (cancelled) return;
 
         // Build risk lookup by state code
         const riskMap = new Map<string, StateRisk>();

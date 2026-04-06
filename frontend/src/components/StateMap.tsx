@@ -93,17 +93,23 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
 
         L.control.zoom({ position: "topright" }).addTo(map);
 
-        // Try state-specific county GeoJSON, fall back to TX for now
         const geoPath = `/geojson/${stateCode.toLowerCase()}-counties.geojson`;
-        const [geoRes, countyRisks] = await Promise.all([
-          fetch(geoPath),
-          api.getCountyRisks(stateCode),
-        ]);
+        const geoRes = await fetch(geoPath);
+
+        if (cancelled) return;
+
+        // Fetch county risk data — gracefully degrade if backend is down
+        let countyRisks: CountyRisk[] = [];
+        try {
+          countyRisks = await api.getCountyRisks(stateCode);
+        } catch {
+          // Backend unavailable — render map with "no data" styling
+        }
 
         if (cancelled) return;
 
         if (!geoRes.ok) {
-          // No county GeoJSON for this state yet — show data without map overlay
+          // No county GeoJSON for this state — show stats only if we have them
           setStats({
             safe: countyRisks.filter(r => r.risk_level === "safe").length,
             caution: countyRisks.filter(r => r.risk_level === "caution").length,

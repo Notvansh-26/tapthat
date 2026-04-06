@@ -1,5 +1,5 @@
 """
-EPA Data Ingestion Pipeline for Texas Water Quality
+EPA Data Ingestion Pipeline for US Water Quality
 
 Fetches data from:
 1. EPA ECHO SDW API — water systems, violations, compliance

@@ -15,7 +15,7 @@ export default function ComparePage() {
           Compare Water Quality
         </h1>
         <p className="text-slate-500 max-w-lg">
-          Add up to 5 Texas ZIP codes and compare water systems, violations,
+          Add up to 5 US ZIP codes and compare water systems, violations,
           and risk levels side by side.
         </p>
       </section>
