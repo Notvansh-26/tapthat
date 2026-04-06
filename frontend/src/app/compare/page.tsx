@@ -5,17 +5,17 @@ import { ArrowLeftRight } from "lucide-react";
 
 export default function ComparePage() {
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <section className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 bg-tap-100 text-tap-700 text-sm font-medium px-4 py-1.5 rounded-full mb-4">
-          <ArrowLeftRight className="w-4 h-4" />
-          Side-by-Side Comparison
+    <div className="max-w-7xl mx-auto px-6 py-10">
+      <section className="mb-8">
+        <div className="inline-flex items-center gap-2 bg-brand-50 text-brand-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-4 border border-brand-100">
+          <ArrowLeftRight className="w-3.5 h-3.5" />
+          SIDE-BY-SIDE COMPARISON
         </div>
-        <h1 className="text-3xl font-bold text-tap-950 mb-2">
+        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
           Compare Water Quality
         </h1>
-        <p className="text-tap-500 max-w-lg mx-auto">
-          Add up to 5 Texas ZIP codes and compare water systems, contaminants,
+        <p className="text-slate-500 max-w-lg">
+          Add up to 5 Texas ZIP codes and compare water systems, violations,
           and risk levels side by side.
         </p>
       </section>

@@ -5,27 +5,46 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Clean blue/white govt-style palette
-        tap: {
-          50: "#f0f7ff",
-          100: "#e0efff",
-          200: "#b8dbff",
-          300: "#7abfff",
-          400: "#3a9fff",
-          500: "#0d7fe8",
-          600: "#0062c7",
-          700: "#004ea1",
-          800: "#004285",
-          900: "#00376e",
-          950: "#002349",
+        brand: {
+          50: "#f0f9ff",
+          100: "#e0f2fe",
+          200: "#bae6fd",
+          300: "#7dd3fc",
+          400: "#38bdf8",
+          500: "#0ea5e9",
+          600: "#0284c7",
+          700: "#0369a1",
+          800: "#075985",
+          900: "#0c4a6e",
+          950: "#082f49",
         },
-        safe: { DEFAULT: "#10b981", light: "#d1fae5", dark: "#065f46" },
-        caution: { DEFAULT: "#f59e0b", light: "#fef3c7", dark: "#92400e" },
-        danger: { DEFAULT: "#ef4444", light: "#fee2e2", dark: "#991b1b" },
+        safe: {
+          DEFAULT: "#10b981",
+          light: "#ecfdf5",
+          medium: "#6ee7b7",
+          dark: "#065f46",
+        },
+        caution: {
+          DEFAULT: "#f59e0b",
+          light: "#fffbeb",
+          medium: "#fcd34d",
+          dark: "#92400e",
+        },
+        danger: {
+          DEFAULT: "#ef4444",
+          light: "#fef2f2",
+          medium: "#fca5a5",
+          dark: "#991b1b",
+        },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
+      },
+      boxShadow: {
+        soft: "0 2px 15px rgba(0, 0, 0, 0.04)",
+        card: "0 4px 20px rgba(0, 0, 0, 0.06)",
+        elevated: "0 10px 40px rgba(0, 0, 0, 0.1)",
       },
     },
   },

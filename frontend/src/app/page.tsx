@@ -4,30 +4,28 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import SearchBar from "@/components/SearchBar";
 import WaterQualityCard from "@/components/WaterQualityCard";
-import RiskBadge from "@/components/RiskBadge";
 import { api, ZipCodeReport } from "@/lib/api";
-import { Droplets, MapPin, TrendingDown } from "lucide-react";
+import { Droplets, MapPin, BarChart3, Database, Eye } from "lucide-react";
 
-// Leaflet must be loaded client-side only
-const TexasMap = dynamic(() => import("@/components/TexasMap"), { ssr: false });
+const USMap = dynamic(() => import("@/components/USMap"), { ssr: false });
+const StateMap = dynamic(() => import("@/components/StateMap"), { ssr: false });
 
 export default function Home() {
   const [report, setReport] = useState<ZipCodeReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searched, setSearched] = useState(false);
+  const [selectedState, setSelectedState] = useState<{ code: string; name: string } | null>(null);
 
   const handleSearch = async (zip: string) => {
     setLoading(true);
     setError(null);
-    setSearched(true);
     try {
       const data = await api.getZipReport(zip);
       setReport(data);
     } catch (e: any) {
       setError(
         e.message.includes("404")
-          ? `No water data found for ZIP ${zip}. Try another Texas ZIP code.`
+          ? `No water data found for ZIP ${zip}. Try another ZIP code.`
           : "Something went wrong. Please try again."
       );
       setReport(null);
@@ -37,110 +35,131 @@ export default function Home() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Hero section — like the main weather display */}
-      <section className="text-center mb-10">
-        <div className="inline-flex items-center gap-2 bg-tap-100 text-tap-700 text-sm font-medium px-4 py-1.5 rounded-full mb-4">
-          <Droplets className="w-4 h-4" />
-          Texas Water Quality Dashboard
-        </div>
-        <h1 className="text-4xl md:text-5xl font-bold text-tap-950 mb-3">
-          Know what&apos;s in your tap.
-        </h1>
-        <p className="text-tap-500 text-lg max-w-xl mx-auto mb-8">
-          Enter your ZIP code to see water quality data, violations, and
-          contaminant levels for your area.
-        </p>
+    <>
+      {/* Hero */}
+      <section className="hero-gradient relative overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
+            backgroundSize: "32px 32px",
+          }}
+        />
 
-        <div className="flex justify-center">
-          <SearchBar onSearch={handleSearch} />
-        </div>
-      </section>
+        <div className="relative max-w-7xl mx-auto px-6 pt-16 pb-20">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm text-white/90 text-xs font-semibold px-3 py-1.5 rounded-full mb-6 border border-white/10">
+              <Droplets className="w-3.5 h-3.5" />
+              US WATER QUALITY · REAL EPA DATA
+            </div>
 
-      {/* Loading state */}
-      {loading && (
-        <div className="flex justify-center py-12">
-          <div className="flex items-center gap-3 text-tap-500">
-            <div className="w-6 h-6 border-2 border-tap-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-lg">Analyzing water quality...</span>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-[1.1] tracking-tight mb-4">
+              Know what&apos;s in
+              <br />
+              <span className="text-brand-200">your tap.</span>
+            </h1>
+
+            <p className="text-lg text-brand-100/80 mb-8 max-w-lg leading-relaxed">
+              Search any US ZIP code for real water quality data, violations,
+              and contaminant levels from the EPA.
+            </p>
+
+            <SearchBar onSearch={handleSearch} loading={loading} variant="hero" />
           </div>
         </div>
-      )}
 
-      {/* Error state */}
-      {error && (
-        <div className="max-w-md mx-auto bg-danger-light text-danger-dark rounded-2xl p-4 text-center">
-          {error}
-        </div>
-      )}
-
-      {/* Results */}
-      {report && !loading && (
-        <section className="mb-10">
-          <WaterQualityCard report={report} />
-        </section>
-      )}
-
-      {/* Map section */}
-      <section className="mb-10">
-        <div className="flex items-center gap-2 mb-4">
-          <MapPin className="w-5 h-5 text-tap-600" />
-          <h2 className="text-xl font-semibold text-tap-900">
-            Texas Water Systems Map
-          </h2>
-        </div>
-        <TexasMap />
-        <div className="flex items-center gap-6 justify-center mt-4 text-sm text-tap-500">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-safe" /> Safe
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-caution" /> Caution
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-danger" /> At Risk
-          </span>
+        <div className="absolute bottom-0 left-0 right-0">
+          <svg viewBox="0 0 1440 60" fill="none" className="w-full">
+            <path d="M0 60V20C240 40 480 0 720 20C960 40 1200 0 1440 20V60H0Z" fill="#f8fafc" />
+          </svg>
         </div>
       </section>
 
-      {/* Info cards — like weather app "details" section */}
-      {!searched && (
-        <section className="grid md:grid-cols-3 gap-6">
-          <InfoCard
-            icon={<Droplets className="w-6 h-6 text-tap-500" />}
-            title="Real EPA Data"
-            description="Sourced directly from EPA's ECHO and SDWIS databases. Updated weekly."
-          />
-          <InfoCard
-            icon={<MapPin className="w-6 h-6 text-tap-500" />}
-            title="Every TX ZIP Code"
-            description="Coverage for all community water systems across the state of Texas."
-          />
-          <InfoCard
-            icon={<TrendingDown className="w-6 h-6 text-tap-500" />}
-            title="Track Trends"
-            description="See violation history and contaminant levels over time for any system."
-          />
+      <div className="max-w-7xl mx-auto px-6 -mt-2">
+        {error && (
+          <div className="mb-8 p-4 rounded-2xl bg-danger-light border border-danger/20 text-danger-dark text-sm font-medium fade-up">
+            {error}
+          </div>
+        )}
+
+        {report && !loading && (
+          <section className="mb-12 max-w-2xl">
+            <WaterQualityCard report={report} />
+          </section>
+        )}
+
+        {/* Map */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-brand-500" />
+                {selectedState ? `${selectedState.name} County Risk Map` : "US Water Quality Map"}
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">
+                {selectedState
+                  ? "Hover over a county to see water quality details and ZIP codes"
+                  : "Click a state to explore county-level water quality"}
+              </p>
+            </div>
+          </div>
+          {selectedState ? (
+            <StateMap
+              stateCode={selectedState.code}
+              stateName={selectedState.name}
+              onBack={() => setSelectedState(null)}
+            />
+          ) : (
+            <USMap
+              onStateSelect={(code, name) => setSelectedState({ code, name })}
+            />
+          )}
         </section>
-      )}
-    </div>
+
+        {!report && (
+          <section className="grid md:grid-cols-3 gap-5 mb-16">
+            <FeatureCard
+              icon={<Database className="w-5 h-5" />}
+              title="Real EPA Data"
+              description="Sourced directly from EPA ECHO and SDWIS federal databases. Updated weekly with the latest compliance data."
+              delay={1}
+            />
+            <FeatureCard
+              icon={<Eye className="w-5 h-5" />}
+              title="Nationwide Coverage"
+              description="Water quality data for all 50 states, covering community water systems across every county."
+              delay={2}
+            />
+            <FeatureCard
+              icon={<BarChart3 className="w-5 h-5" />}
+              title="Compare Areas"
+              description="Side-by-side comparison of up to 5 ZIP codes. See which areas have cleaner water at a glance."
+              delay={3}
+            />
+          </section>
+        )}
+      </div>
+    </>
   );
 }
 
-function InfoCard({
+function FeatureCard({
   icon,
   title,
   description,
+  delay,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
+  delay: number;
 }) {
   return (
-    <div className="bg-white rounded-2xl p-6 border border-tap-100 shadow-sm card-hover">
-      <div className="mb-3">{icon}</div>
-      <h3 className="font-semibold text-tap-900 mb-1">{title}</h3>
-      <p className="text-sm text-tap-500">{description}</p>
+    <div className={`card p-6 fade-up fade-up-delay-${delay}`}>
+      <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center mb-4">
+        {icon}
+      </div>
+      <h3 className="font-semibold text-slate-900 mb-1.5">{title}</h3>
+      <p className="text-sm text-slate-500 leading-relaxed">{description}</p>
     </div>
   );
 }

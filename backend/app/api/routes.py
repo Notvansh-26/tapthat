@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["water"])
 
 @router.get("/search/{zip_code}", response_model=ZipCodeReport)
 def get_water_report(zip_code: str, db: Session = Depends(get_db)):
-    """Get water quality report for a Texas ZIP code — the main endpoint."""
+    """Get water quality report for any US ZIP code."""
     service = WaterService(db)
     report = service.get_zip_report(zip_code)
     if not report:
@@ -44,20 +44,21 @@ def compare_zip_codes(
 
 @router.get("/systems", response_model=list[WaterSystemSummary])
 def list_water_systems(
+    state: str | None = None,
     county: str | None = None,
     risk: str | None = None,
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    """List water systems with optional filters — powers the map view."""
+    """List water systems with optional filters."""
     service = WaterService(db)
-    return service.list_systems(county=county, risk=risk, limit=limit, offset=offset)
+    return service.list_systems(state=state, county=county, risk=risk, limit=limit, offset=offset)
 
 
 @router.get("/contaminants/{pwsid}")
 def get_contaminants(pwsid: str, db: Session = Depends(get_db)):
-    """Get all contaminant results for a specific water system — the deep dive."""
+    """Get all contaminant results for a specific water system."""
     service = WaterService(db)
     results = service.get_contaminants(pwsid)
     if not results:
@@ -67,13 +68,32 @@ def get_contaminants(pwsid: str, db: Session = Depends(get_db)):
 
 @router.get("/history/{pwsid}")
 def get_violation_history(pwsid: str, db: Session = Depends(get_db)):
-    """Get violation history timeline for a water system — powers the trend chart."""
+    """Get violation history timeline for a water system."""
     service = WaterService(db)
     return service.get_violation_history(pwsid)
 
 
-@router.get("/map/systems")
-def get_map_systems(db: Session = Depends(get_db)):
-    """Get all TX water systems with lat/lng and risk level for map markers."""
+@router.get("/map/states")
+def get_state_risks(db: Session = Depends(get_db)):
+    """Get state-level risk data for the national map."""
     service = WaterService(db)
-    return service.get_map_data()
+    return service.get_state_risks()
+
+
+@router.get("/map/counties/{state_code}")
+def get_county_risks(state_code: str, db: Session = Depends(get_db)):
+    """Get county-level risk data for a specific state."""
+    service = WaterService(db)
+    return service.get_county_risks(state_code)
+
+
+@router.get("/map/systems")
+def get_map_systems(state: str | None = None, db: Session = Depends(get_db)):
+    """Get water systems with lat/lng and risk level for map markers."""
+    service = WaterService(db)
+    return service.get_map_data(state_code=state)
+
+
+@router.get("/health")
+def health_check():
+    return {"status": "ok"}

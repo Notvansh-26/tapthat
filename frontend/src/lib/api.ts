@@ -58,6 +58,24 @@ export interface MapSystem {
   risk_level: "safe" | "caution" | "danger";
 }
 
+export interface CountyRisk {
+  county: string;
+  risk_level: "safe" | "caution" | "danger";
+  system_count: number;
+  population: number;
+  violation_count: number;
+  zip_codes: string[];
+}
+
+export interface StateRisk {
+  state_code: string;
+  state_name: string;
+  risk_level: "safe" | "caution" | "danger";
+  system_count: number;
+  population: number;
+  violation_count: number;
+}
+
 async function fetchApi<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
@@ -74,7 +92,13 @@ export const api = {
     return fetchApi<ComparisonReport>(`/compare?${params}`);
   },
 
-  getMapSystems: () => fetchApi<MapSystem[]>("/map/systems"),
+  getMapSystems: (stateCode?: string) =>
+    fetchApi<MapSystem[]>(`/map/systems${stateCode ? `?state=${stateCode}` : ""}`),
+
+  getStateRisks: () => fetchApi<StateRisk[]>("/map/states"),
+
+  getCountyRisks: (stateCode: string) =>
+    fetchApi<CountyRisk[]>(`/map/counties/${stateCode}`),
 
   getContaminants: (pwsid: string) =>
     fetchApi<ContaminantResult[]>(`/contaminants/${pwsid}`),

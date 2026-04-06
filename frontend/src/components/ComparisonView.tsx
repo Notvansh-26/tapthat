@@ -5,7 +5,7 @@ import { api, ZipCodeReport } from "@/lib/api";
 import SearchBar from "./SearchBar";
 import WaterQualityCard from "./WaterQualityCard";
 import RiskBadge from "./RiskBadge";
-import { X, Plus, ArrowLeftRight } from "lucide-react";
+import { X, ArrowLeftRight, Loader2 } from "lucide-react";
 
 export default function ComparisonView() {
   const [zipCodes, setZipCodes] = useState<string[]>([]);
@@ -14,9 +14,12 @@ export default function ComparisonView() {
   const [error, setError] = useState<string | null>(null);
 
   const addZip = (zip: string) => {
-    if (zipCodes.includes(zip)) return;
+    if (zipCodes.includes(zip)) {
+      setError(`${zip} is already added`);
+      return;
+    }
     if (zipCodes.length >= 5) {
-      setError("Max 5 ZIP codes");
+      setError("Maximum 5 ZIP codes");
       return;
     }
     setZipCodes([...zipCodes, zip]);
@@ -38,143 +41,181 @@ export default function ComparisonView() {
     try {
       const data = await api.compare(zipCodes);
       setReports(data.reports);
-    } catch (e: any) {
-      setError(e.message || "Failed to load comparison");
+    } catch {
+      setError("Failed to load comparison data");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Input area */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-tap-100">
-        <div className="flex items-center gap-2 mb-4">
-          <ArrowLeftRight className="w-5 h-5 text-tap-600" />
-          <h2 className="text-lg font-semibold text-tap-900">
-            Compare ZIP Codes
-          </h2>
+    <div className="space-y-8">
+      {/* Input */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2.5 mb-5">
+          <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
+            <ArrowLeftRight className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-slate-900">Add ZIP Codes</h2>
+            <p className="text-xs text-slate-400">Up to 5 Texas ZIP codes</p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 mb-4">
+        {/* ZIP chips */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           {zipCodes.map((zip) => (
             <span
               key={zip}
-              className="inline-flex items-center gap-1.5 bg-tap-100 text-tap-800
-                         font-semibold px-3 py-1.5 rounded-full text-sm"
+              className="inline-flex items-center gap-1.5 bg-brand-50 text-brand-700
+                         font-bold px-3 py-1.5 rounded-lg text-sm border border-brand-100"
             >
               {zip}
               <button
                 onClick={() => removeZip(zip)}
-                className="hover:text-danger transition-colors"
+                className="hover:text-danger transition-colors ml-0.5"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </span>
           ))}
+
           {zipCodes.length < 5 && (
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-[240px]">
               <SearchBar
                 onSearch={addZip}
-                placeholder="Add ZIP code..."
+                variant="compact"
+                placeholder={zipCodes.length === 0 ? "Add first ZIP code" : "Add another ZIP"}
               />
             </div>
           )}
         </div>
 
         {error && (
-          <p className="text-sm text-danger font-medium mb-3">{error}</p>
+          <p className="text-sm text-danger font-medium mb-4">{error}</p>
         )}
 
         <button
           onClick={runComparison}
           disabled={zipCodes.length < 2 || loading}
-          className="bg-tap-600 hover:bg-tap-700 disabled:bg-tap-300 text-white
-                     font-semibold px-6 py-2.5 rounded-xl transition-colors"
+          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800
+                     disabled:bg-slate-200 disabled:text-slate-400
+                     text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-sm"
         >
-          {loading ? "Comparing..." : "Compare"}
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {loading ? "Comparing..." : "Compare ZIP Codes"}
         </button>
       </div>
 
-      {/* Results grid */}
+      {/* Cards */}
       {reports.length > 0 && (
         <div
           className="grid gap-6"
           style={{
-            gridTemplateColumns: `repeat(${Math.min(reports.length, 3)}, 1fr)`,
+            gridTemplateColumns: `repeat(${Math.min(reports.length, 3)}, minmax(0, 1fr))`,
           }}
         >
           {reports.map((report) => (
-            <WaterQualityCard key={report.zip_code} report={report} />
+            <WaterQualityCard key={report.zip_code} report={report} compact />
           ))}
         </div>
       )}
 
-      {/* Side-by-side contaminant comparison table */}
+      {/* Comparison table */}
       {reports.length >= 2 && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-tap-100 overflow-x-auto">
-          <h3 className="text-lg font-semibold text-tap-900 mb-4">
-            Contaminant Comparison
-          </h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-tap-100">
-                <th className="text-left py-2 px-3 text-tap-500 font-medium">
-                  Contaminant
-                </th>
-                {reports.map((r) => (
-                  <th key={r.zip_code} className="text-center py-2 px-3">
-                    <span className="text-tap-800 font-semibold">{r.zip_code}</span>
-                    <br />
-                    <RiskBadge level={r.overall_risk_level} size="sm" />
+        <div className="card overflow-hidden fade-up">
+          <div className="p-6 pb-0">
+            <h3 className="font-bold text-slate-900">Side-by-Side Comparison</h3>
+            <p className="text-sm text-slate-400 mt-0.5">
+              Key metrics across all selected areas
+            </p>
+          </div>
+          <div className="overflow-x-auto p-6">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                    Metric
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {getUniqueContaminants(reports).map((name) => (
-                <tr key={name} className="border-b border-tap-50 hover:bg-tap-50 transition">
-                  <td className="py-2.5 px-3 font-medium text-tap-700">{name}</td>
-                  {reports.map((r) => {
-                    const c = r.top_contaminants.find(
-                      (tc) => tc.contaminant_name === name
-                    );
-                    return (
-                      <td key={r.zip_code} className="text-center py-2.5 px-3 tabular-nums">
-                        {c?.measurement_value != null ? (
-                          <span
-                            className={`font-semibold ${
-                              (c.exceedance_ratio ?? 0) > 1
-                                ? "text-danger"
-                                : (c.exceedance_ratio ?? 0) > 0.5
-                                ? "text-caution"
-                                : "text-safe-dark"
-                            }`}
-                          >
-                            {c.measurement_value} {c.unit}
-                          </span>
-                        ) : (
-                          <span className="text-tap-300">—</span>
-                        )}
-                      </td>
-                    );
-                  })}
+                  {reports.map((r) => (
+                    <th key={r.zip_code} className="text-center py-3 px-4">
+                      <div className="font-bold text-slate-800 text-base">{r.zip_code}</div>
+                      <div className="mt-1">
+                        <RiskBadge level={r.overall_risk_level} size="sm" />
+                      </div>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <CompareRow
+                  label="Population Served"
+                  values={reports.map((r) => r.total_population_served.toLocaleString())}
+                />
+                <CompareRow
+                  label="Water Systems"
+                  values={reports.map((r) => String(r.water_systems.length))}
+                />
+                <CompareRow
+                  label="Violations (3yr)"
+                  values={reports.map((r) =>
+                    String(r.water_systems.reduce((s, w) => s + w.violation_count_3yr, 0))
+                  )}
+                  highlight
+                />
+                <CompareRow
+                  label="Health Violations"
+                  values={reports.map((r) =>
+                    String(r.water_systems.reduce((s, w) => s + w.health_violation_count_3yr, 0))
+                  )}
+                  highlight
+                />
+                <CompareRow
+                  label="Serious Violators"
+                  values={reports.map((r) =>
+                    String(r.water_systems.filter((w) => w.serious_violator).length)
+                  )}
+                  highlight
+                />
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function getUniqueContaminants(reports: ZipCodeReport[]): string[] {
-  const names = new Set<string>();
-  reports.forEach((r) =>
-    r.top_contaminants.forEach((c) => {
-      if (c.contaminant_name) names.add(c.contaminant_name);
-    })
+function CompareRow({
+  label,
+  values,
+  highlight = false,
+}: {
+  label: string;
+  values: string[];
+  highlight?: boolean;
+}) {
+  const nums = values.map((v) => parseInt(v.replace(/,/g, "")) || 0);
+  const max = Math.max(...nums);
+
+  return (
+    <tr className="hover:bg-slate-50/50 transition-colors">
+      <td className="py-3 px-4 font-medium text-slate-600">{label}</td>
+      {values.map((v, i) => (
+        <td key={i} className="text-center py-3 px-4">
+          <span
+            className={`font-bold tabular-nums ${
+              highlight && nums[i] === max && max > 0
+                ? "text-danger"
+                : highlight && nums[i] === 0
+                ? "text-safe-dark"
+                : "text-slate-800"
+            }`}
+          >
+            {v}
+          </span>
+        </td>
+      ))}
+    </tr>
   );
-  return Array.from(names).sort();
 }

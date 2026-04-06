@@ -11,6 +11,6 @@ class GeographicArea(Base):
     zip_code = Column(String(10), index=True)
     county_served = Column(String(100))
     city_served = Column(String(100))
-    state_code = Column(String(2), default="TX")
+    state_code = Column(String(2), index=True)
 
     water_system = relationship("WaterSystem", back_populates="geographic_areas")

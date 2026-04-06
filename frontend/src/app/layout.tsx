@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "TapThat — Texas Water Quality Dashboard",
+  title: "TapThat — US Water Quality Dashboard",
   description:
-    "Know what's in your tap. Real-time water quality data for every ZIP code in Texas.",
+    "Know what's in your tap. Real-time water quality data for every ZIP code in the United States.",
 };
 
 export default function RootLayout({
@@ -23,58 +23,60 @@ export default function RootLayout({
       </head>
       <body>
         <div className="min-h-screen flex flex-col">
-          {/* Header */}
-          <header className="glass sticky top-0 z-50 border-b border-tap-200">
-            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-tap-600 flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">💧</span>
+          {/* Nav */}
+          <nav className="glass sticky top-0 z-50 border-b border-slate-200/50">
+            <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+              <a href="/" className="flex items-center gap-2.5 group">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 1C8 1 3 7 3 10a5 5 0 0010 0c0-3-5-9-5-9z" fill="white" fillOpacity="0.9"/>
+                  </svg>
                 </div>
-                <div>
-                  <h1 className="text-lg font-bold text-tap-900 leading-tight">
-                    TapThat
-                  </h1>
-                  <p className="text-xs text-tap-500">Texas Water Quality</p>
-                </div>
+                <span className="font-bold text-slate-900 text-[15px] tracking-tight">
+                  TapThat
+                </span>
+              </a>
+              <div className="flex items-center gap-1">
+                <NavLink href="/" label="Dashboard" />
+                <NavLink href="/compare" label="Compare" />
+                <NavLink href="/about" label="About" />
               </div>
-              <nav className="flex items-center gap-6 text-sm font-medium">
-                <a href="/" className="text-tap-700 hover:text-tap-900 transition">
-                  Dashboard
-                </a>
-                <a href="/compare" className="text-tap-700 hover:text-tap-900 transition">
-                  Compare
-                </a>
-                <a href="/about" className="text-tap-700 hover:text-tap-900 transition">
-                  About
-                </a>
-              </nav>
             </div>
-          </header>
+          </nav>
 
-          {/* Main content */}
           <main className="flex-1">{children}</main>
 
-          {/* Footer */}
-          <footer className="border-t border-tap-200 bg-white py-6">
-            <div className="max-w-7xl mx-auto px-4 text-center text-sm text-tap-500">
+          <footer className="border-t border-slate-200 bg-white py-8 mt-auto">
+            <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-400">
               <p>
-                Data sourced from{" "}
-                <a href="https://echo.epa.gov" className="underline hover:text-tap-700">
+                Data from{" "}
+                <a href="https://echo.epa.gov" className="text-slate-500 hover:text-brand-600 underline underline-offset-2 transition-colors">
                   EPA ECHO
-                </a>{" "}
-                &{" "}
-                <a href="https://data.epa.gov" className="underline hover:text-tap-700">
-                  EPA SDWIS
                 </a>
-                . Updated weekly.
+                {" & "}
+                <a href="https://data.epa.gov" className="text-slate-500 hover:text-brand-600 underline underline-offset-2 transition-colors">
+                  SDWIS
+                </a>
+                {" · Updated weekly"}
               </p>
-              <p className="mt-1 text-tap-400">
-                tapthat.info — Built for transparency, not profit.
+              <p className="text-slate-300">
+                tapthat.info · Built for transparency
               </p>
             </div>
           </footer>
         </div>
       </body>
     </html>
+  );
+}
+
+function NavLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all"
+    >
+      {label}
+    </a>
   );
 }

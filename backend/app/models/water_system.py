@@ -7,6 +7,7 @@ class WaterSystem(Base):
     __tablename__ = "water_systems"
 
     pwsid = Column(String(12), primary_key=True, index=True)  # e.g., TX1010001
+    state_code = Column(String(2), index=True)  # e.g., TX, CA, NY
     name = Column(String(255), nullable=False)
     primary_source = Column(String(50))  # Ground water, Surface water, etc.
     system_type = Column(String(10))  # CWS, NTNCWS, TNCWS
