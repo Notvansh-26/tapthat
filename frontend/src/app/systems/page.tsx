@@ -28,9 +28,16 @@ export default function SystemsPage() {
   const [error, setError] = useState<string | null>(null);
   const [stateFilter, setStateFilter] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
+  const [countyInput, setCountyInput] = useState("");
   const [countySearch, setCountySearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+
+  // Debounce county search
+  useEffect(() => {
+    const timer = setTimeout(() => setCountySearch(countyInput), 400);
+    return () => clearTimeout(timer);
+  }, [countyInput]);
 
   const fetchSystems = useCallback(async (newOffset: number) => {
     setLoading(true);
@@ -126,8 +133,8 @@ export default function SystemsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
               <input
                 type="text"
-                value={countySearch}
-                onChange={(e) => setCountySearch(e.target.value)}
+                value={countyInput}
+                onChange={(e) => setCountyInput(e.target.value)}
                 placeholder="Search county..."
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
               />

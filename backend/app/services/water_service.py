@@ -130,9 +130,31 @@ class WaterService:
         if county:
             query = query.filter(WaterSystem.counties_served.ilike(f"%{county}%"))
 
+        # Apply risk filter at DB level to avoid pagination issues
+        if risk == "danger":
+            from sqlalchemy import or_
+            query = query.filter(
+                or_(
+                    WaterSystem.serious_violator == True,
+                    WaterSystem.health_violation_count_3yr >= 3,
+                )
+            )
+        elif risk == "caution":
+            query = query.filter(
+                WaterSystem.serious_violator != True,
+                WaterSystem.health_violation_count_3yr < 3,
+                (WaterSystem.violation_count_3yr > 0) | (WaterSystem.health_violation_count_3yr > 0),
+            )
+        elif risk == "safe":
+            query = query.filter(
+                WaterSystem.serious_violator != True,
+                WaterSystem.violation_count_3yr == 0,
+                WaterSystem.health_violation_count_3yr == 0,
+            )
+
         systems = query.offset(offset).limit(limit).all()
 
-        results = [
+        return [
             WaterSystemSummary(
                 pwsid=s.pwsid,
                 name=s.name,
@@ -147,11 +169,6 @@ class WaterService:
             )
             for s in systems
         ]
-
-        if risk:
-            results = [r for r in results if r.risk_level == risk]
-
-        return results
 
     def get_contaminants(self, pwsid: str) -> list[ContaminantOut]:
         results = (
