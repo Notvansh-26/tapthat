@@ -369,6 +369,10 @@ def ingest_lcr_samples(conn, state_code: str = "TX"):
             info = CONTAMINANT_INFO.get(code, {})
             value = _safe_float(row.get("sample_measure"))
             mcl = info.get("mcl")
+            mclg = info.get("mclg")
+            # Fall back to MCLG (health goal) when no enforceable MCL exists,
+            # so the contaminant still shows up on cards instead of vanishing.
+            ratio_basis = mcl if mcl else mclg
 
             rows.append({
                 "pwsid": pwsid,
@@ -378,10 +382,10 @@ def ingest_lcr_samples(conn, state_code: str = "TX"):
                 "measurement_value": value,
                 "unit": info.get("unit", "mg/L"),
                 "mcl": mcl,
-                "mclg": info.get("mclg"),
+                "mclg": mclg,
                 "sample_date": _parse_date(row.get("sample_date")),
                 "sample_type": row.get("sample_type_code"),
-                "exceedance_ratio": round(value / mcl, 3) if value and mcl else None,
+                "exceedance_ratio": round(value / ratio_basis, 3) if value and ratio_basis else None,
             })
 
         if rows:
@@ -485,6 +489,13 @@ def run_full_ingestion(states: list[str] | None = None):
                 continue
             if len(states) > 1:
                 time.sleep(1)  # Rate limit between states
+
+    # Recalculate violation counts from violations table
+    # (ECHO API returns ViolationCount=None, so we derive from SDWIS data)
+    logger.info("\nRecalculating risk levels from violations data...")
+    from scripts.fix_risk_levels import fix_violation_counts, fix_contaminant_names
+    fix_violation_counts()
+    fix_contaminant_names()
 
     logger.info("=" * 60)
     logger.info("Ingestion complete!")

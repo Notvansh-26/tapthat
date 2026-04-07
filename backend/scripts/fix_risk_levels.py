@@ -217,7 +217,15 @@ def fix_violation_counts():
     three_years_ago = datetime.now(timezone.utc) - timedelta(days=3 * 365)
 
     with engine.connect() as conn:
-        # Count total violations per system in last 3 years
+        # Step 1: zero out everything first, so systems whose violations aged
+        # out (or were deleted) get reset rather than keeping stale counts.
+        conn.execute(text("""
+            UPDATE water_systems
+            SET violation_count_3yr = 0,
+                health_violation_count_3yr = 0
+        """))
+
+        # Step 2: count total violations per system in last 3 years
         result = conn.execute(text("""
             UPDATE water_systems ws SET
                 violation_count_3yr = sub.total_violations,
@@ -236,6 +244,17 @@ def fix_violation_counts():
         """), {"cutoff": three_years_ago})
 
         updated = result.rowcount
+
+        # Step 3: clear stale serious_violator flags. ECHO sets SNCFlag at
+        # ingest but never clears it; if a system has no recent health
+        # violations, it shouldn't still be flagged as a serious violator.
+        conn.execute(text("""
+            UPDATE water_systems
+            SET serious_violator = false
+            WHERE serious_violator = true
+              AND health_violation_count_3yr = 0
+        """))
+
         conn.commit()
         logger.info(f"Updated violation counts for {updated} water systems")
 
