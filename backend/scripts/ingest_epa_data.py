@@ -125,6 +125,63 @@ def fetch_with_retry(url: str, params: dict = None, retries: int = 3) -> dict | 
     return None
 
 
+def fetch_sdwis_state_chunked(table: str, state_code: str, batch_size: int = 1000):
+    """
+    Yield rows from a SDWIS Envirofacts table for one state, sub-chunking by
+    pwsid prefix to avoid the ~10k offset cap on this API.
+
+    Strategy: walk pwsid prefixes {state}00..{state}99 (100 buckets). If any
+    bucket gets near the cap (>= OVERFLOW_THRESHOLD rows), discard the
+    buffered rows for that bucket and recurse one digit deeper instead, so
+    we never yield duplicates and never lose rows past the cap.
+
+    Empirically (2026-04-07): geographic_area + lcr_sample_result cap between
+    10k–25k rows per query; violation caps between 50k–100k. The COUNT
+    endpoint is broken (returns 500), so we can't pre-check totals.
+    """
+    OVERFLOW_THRESHOLD = 9000
+    MAX_DEPTH = 6  # state + up to 6 digits; pwsids are state + 7 digits
+
+    def fetch_prefix(prefix: str, depth: int):
+        bucket = []
+        offset = 1
+        overflowed = False
+        while True:
+            end = offset + batch_size - 1
+            url = (
+                f"{SDWIS_BASE}/{table}"
+                f"/primacy_agency_code/equals/{state_code}"
+                f"/pwsid/beginswith/{prefix}"
+                f"/{offset}:{end}/json"
+            )
+            data = fetch_with_retry(url)
+            if not data:
+                break
+            bucket.extend(data)
+            if len(data) < batch_size:
+                break
+            if len(bucket) >= OVERFLOW_THRESHOLD and depth < MAX_DEPTH:
+                overflowed = True
+                break
+            offset += batch_size
+            time.sleep(0.2)
+
+        if overflowed:
+            logger.warning(
+                f"  prefix {prefix} hit {len(bucket)} rows — splitting deeper"
+            )
+            for d in "0123456789":
+                yield from fetch_prefix(prefix + d, depth + 1)
+        else:
+            yield from bucket
+
+    # Start with 10 single-digit buckets ({state}0..{state}9). Recurse to
+    # 2-digit, 3-digit, ... only when a bucket overflows. This keeps small
+    # states cheap (10 requests) while still handling CA-sized states safely.
+    for d in "0123456789":
+        yield from fetch_prefix(state_code + d, depth=1)
+
+
 ALL_STATES = [
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
     "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
@@ -230,48 +287,41 @@ def ingest_water_systems(conn, state_code: str = "TX"):
 def ingest_geographic_areas(conn, state_code: str = "TX"):
     logger.info(f"Fetching {state_code} ZIP code mappings from SDWIS...")
 
-    batch_size = 1000
-    offset = 1
+    FLUSH_EVERY = 1000
+    rows: list[dict] = []
     total = 0
 
-    while True:
-        end = offset + batch_size - 1
-        data = fetch_with_retry(
-            f"{SDWIS_BASE}/sdwis.geographic_area/primacy_agency_code/equals/{state_code}/{offset}:{end}/json"
+    def flush():
+        nonlocal rows, total
+        if not rows:
+            return
+        conn.execute(
+            text("""
+                INSERT INTO geographic_areas (pwsid, zip_code, county_served, city_served, state_code)
+                VALUES (:pwsid, :zip_code, :county_served, :city_served, :state_code)
+            """),
+            rows,
         )
-        if not data or len(data) == 0:
-            break
-
-        rows = []
-        for row in data:
-            pwsid = (row.get("pwsid") or "").strip()
-            zip_code = (row.get("zip_code_served") or "").strip()
-            if not pwsid or not zip_code:
-                continue
-            rows.append({
-                "pwsid": pwsid,
-                "zip_code": zip_code[:5],
-                "county_served": row.get("county_served"),
-                "city_served": row.get("city_served"),
-                "state_code": state_code,
-            })
-
-        if rows:
-            conn.execute(
-                text("""
-                    INSERT INTO geographic_areas (pwsid, zip_code, county_served, city_served, state_code)
-                    VALUES (:pwsid, :zip_code, :county_served, :city_served, :state_code)
-                """),
-                rows,
-            )
-            conn.commit()
+        conn.commit()
         total += len(rows)
+        rows = []
         logger.info(f"  {total} geographic areas")
 
-        if len(data) < batch_size:
-            break
-        offset += batch_size
-        time.sleep(0.3)
+    for row in fetch_sdwis_state_chunked("sdwis.geographic_area", state_code):
+        pwsid = (row.get("pwsid") or "").strip()
+        zip_code = (row.get("zip_code_served") or "").strip()
+        if not pwsid or not zip_code:
+            continue
+        rows.append({
+            "pwsid": pwsid,
+            "zip_code": zip_code[:5],
+            "county_served": row.get("county_served"),
+            "city_served": row.get("city_served"),
+            "state_code": state_code,
+        })
+        if len(rows) >= FLUSH_EVERY:
+            flush()
+    flush()
 
     logger.info(f"Ingested {total} {state_code} geographic area mappings")
 
@@ -283,59 +333,52 @@ def ingest_violations(conn, state_code: str = "TX"):
     known_pwsids = {r[0] for r in result}
     logger.info(f"  {len(known_pwsids)} known systems")
 
-    batch_size = 1000
-    offset = 1
+    FLUSH_EVERY = 1000
+    rows: list[dict] = []
     total = 0
     skipped = 0
 
-    while True:
-        end = offset + batch_size - 1
-        data = fetch_with_retry(
-            f"{SDWIS_BASE}/sdwis.violation/primacy_agency_code/equals/{state_code}/{offset}:{end}/json"
+    def flush():
+        nonlocal rows, total
+        if not rows:
+            return
+        conn.execute(
+            text("""
+                INSERT INTO violations (pwsid, violation_id, contaminant_code, contaminant_name,
+                    rule_name, violation_type, severity, is_health_based,
+                    compliance_begin_date, compliance_end_date, enforcement_action)
+                VALUES (:pwsid, :violation_id, :contaminant_code, :contaminant_name,
+                    :rule_name, :violation_type, :severity, :is_health_based,
+                    :compliance_begin_date, :compliance_end_date, :enforcement_action)
+            """),
+            rows,
         )
-        if not data or len(data) == 0:
-            break
-
-        rows = []
-        for row in data:
-            pwsid = (row.get("pwsid") or "").strip()
-            if pwsid not in known_pwsids:
-                skipped += 1
-                continue
-            rows.append({
-                "pwsid": pwsid,
-                "violation_id": row.get("violation_id"),
-                "contaminant_code": row.get("contaminant_code"),
-                "contaminant_name": _get_contaminant_name(row.get("contaminant_code")),
-                "rule_name": row.get("rule_name"),
-                "violation_type": row.get("violation_type"),
-                "severity": row.get("severity"),
-                "is_health_based": row.get("is_health_based_ind", "N") == "Y",
-                "compliance_begin_date": _parse_date(row.get("compl_per_begin_date")),
-                "compliance_end_date": _parse_date(row.get("compl_per_end_date")),
-                "enforcement_action": row.get("enforcement_action"),
-            })
-
-        if rows:
-            conn.execute(
-                text("""
-                    INSERT INTO violations (pwsid, violation_id, contaminant_code, contaminant_name,
-                        rule_name, violation_type, severity, is_health_based,
-                        compliance_begin_date, compliance_end_date, enforcement_action)
-                    VALUES (:pwsid, :violation_id, :contaminant_code, :contaminant_name,
-                        :rule_name, :violation_type, :severity, :is_health_based,
-                        :compliance_begin_date, :compliance_end_date, :enforcement_action)
-                """),
-                rows,
-            )
-            conn.commit()
+        conn.commit()
         total += len(rows)
+        rows = []
         logger.info(f"  {total} violations ({skipped} skipped)")
 
-        if len(data) < batch_size:
-            break
-        offset += batch_size
-        time.sleep(0.3)
+    for row in fetch_sdwis_state_chunked("sdwis.violation", state_code):
+        pwsid = (row.get("pwsid") or "").strip()
+        if pwsid not in known_pwsids:
+            skipped += 1
+            continue
+        rows.append({
+            "pwsid": pwsid,
+            "violation_id": row.get("violation_id"),
+            "contaminant_code": row.get("contaminant_code"),
+            "contaminant_name": _get_contaminant_name(row.get("contaminant_code")),
+            "rule_name": row.get("rule_name"),
+            "violation_type": row.get("violation_type"),
+            "severity": row.get("severity"),
+            "is_health_based": row.get("is_health_based_ind", "N") == "Y",
+            "compliance_begin_date": _parse_date(row.get("compl_per_begin_date")),
+            "compliance_end_date": _parse_date(row.get("compl_per_end_date")),
+            "enforcement_action": row.get("enforcement_action"),
+        })
+        if len(rows) >= FLUSH_EVERY:
+            flush()
+    flush()
 
     logger.info(f"Ingested {total} {state_code} violations (skipped {skipped} orphans)")
 
@@ -346,68 +389,61 @@ def ingest_lcr_samples(conn, state_code: str = "TX"):
     result = conn.execute(text("SELECT pwsid FROM water_systems"))
     known_pwsids = {r[0] for r in result}
 
-    batch_size = 1000
-    offset = 1
+    FLUSH_EVERY = 1000
+    rows: list[dict] = []
     total = 0
     skipped = 0
 
-    while True:
-        end = offset + batch_size - 1
-        data = fetch_with_retry(
-            f"{SDWIS_BASE}/sdwis.lcr_sample_result/primacy_agency_code/equals/{state_code}/{offset}:{end}/json"
+    def flush():
+        nonlocal rows, total
+        if not rows:
+            return
+        conn.execute(
+            text("""
+                INSERT INTO contaminant_results (pwsid, contaminant_code, contaminant_name,
+                    category, measurement_value, unit, mcl, mclg, sample_date,
+                    sample_type, exceedance_ratio)
+                VALUES (:pwsid, :contaminant_code, :contaminant_name,
+                    :category, :measurement_value, :unit, :mcl, :mclg, :sample_date,
+                    :sample_type, :exceedance_ratio)
+            """),
+            rows,
         )
-        if not data or len(data) == 0:
-            break
-
-        rows = []
-        for row in data:
-            pwsid = (row.get("pwsid") or "").strip()
-            if pwsid not in known_pwsids:
-                skipped += 1
-                continue
-            code = (row.get("contaminant_code") or "").strip()
-            info = CONTAMINANT_INFO.get(code, {})
-            value = _safe_float(row.get("sample_measure"))
-            mcl = info.get("mcl")
-            mclg = info.get("mclg")
-            # Fall back to MCLG (health goal) when no enforceable MCL exists,
-            # so the contaminant still shows up on cards instead of vanishing.
-            ratio_basis = mcl if mcl else mclg
-
-            rows.append({
-                "pwsid": pwsid,
-                "contaminant_code": code,
-                "contaminant_name": info.get("name", f"Unknown ({code})"),
-                "category": info.get("category", "Lead and Copper"),
-                "measurement_value": value,
-                "unit": info.get("unit", "mg/L"),
-                "mcl": mcl,
-                "mclg": mclg,
-                "sample_date": _parse_date(row.get("sample_date")),
-                "sample_type": row.get("sample_type_code"),
-                "exceedance_ratio": round(value / ratio_basis, 3) if value and ratio_basis else None,
-            })
-
-        if rows:
-            conn.execute(
-                text("""
-                    INSERT INTO contaminant_results (pwsid, contaminant_code, contaminant_name,
-                        category, measurement_value, unit, mcl, mclg, sample_date,
-                        sample_type, exceedance_ratio)
-                    VALUES (:pwsid, :contaminant_code, :contaminant_name,
-                        :category, :measurement_value, :unit, :mcl, :mclg, :sample_date,
-                        :sample_type, :exceedance_ratio)
-                """),
-                rows,
-            )
-            conn.commit()
+        conn.commit()
         total += len(rows)
+        rows = []
         logger.info(f"  {total} LCR samples ({skipped} skipped)")
 
-        if len(data) < batch_size:
-            break
-        offset += batch_size
-        time.sleep(0.3)
+    for row in fetch_sdwis_state_chunked("sdwis.lcr_sample_result", state_code):
+        pwsid = (row.get("pwsid") or "").strip()
+        if pwsid not in known_pwsids:
+            skipped += 1
+            continue
+        code = (row.get("contaminant_code") or "").strip()
+        info = CONTAMINANT_INFO.get(code, {})
+        value = _safe_float(row.get("sample_measure"))
+        mcl = info.get("mcl")
+        mclg = info.get("mclg")
+        # Fall back to MCLG (health goal) when no enforceable MCL exists,
+        # so the contaminant still shows up on cards instead of vanishing.
+        ratio_basis = mcl if mcl else mclg
+
+        rows.append({
+            "pwsid": pwsid,
+            "contaminant_code": code,
+            "contaminant_name": info.get("name", f"Unknown ({code})"),
+            "category": info.get("category", "Lead and Copper"),
+            "measurement_value": value,
+            "unit": info.get("unit", "mg/L"),
+            "mcl": mcl,
+            "mclg": mclg,
+            "sample_date": _parse_date(row.get("sample_date")),
+            "sample_type": row.get("sample_type_code"),
+            "exceedance_ratio": round(value / ratio_basis, 3) if value and ratio_basis else None,
+        })
+        if len(rows) >= FLUSH_EVERY:
+            flush()
+    flush()
 
     logger.info(f"Ingested {total} {state_code} LCR samples (skipped {skipped} orphans)")
 
