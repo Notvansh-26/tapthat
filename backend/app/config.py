@@ -7,7 +7,7 @@ ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://tapthat:changeme_local_dev@localhost:5432/tapthat"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003"
 
     class Config:
         env_file = str(ENV_FILE)

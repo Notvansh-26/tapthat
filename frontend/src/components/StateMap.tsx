@@ -2,15 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, CountyRisk } from "@/lib/api";
+import { ChevronLeft } from "lucide-react";
 
 const RISK_COLORS: Record<string, { fill: string; stroke: string; label: string }> = {
-  safe: { fill: "#10b981", stroke: "#059669", label: "Safe" },
-  caution: { fill: "#f59e0b", stroke: "#d97706", label: "Caution" },
-  danger: { fill: "#ef4444", stroke: "#dc2626", label: "At Risk" },
-  unknown: { fill: "#e2e8f0", stroke: "#cbd5e1", label: "No Data" },
+  safe:    { fill: "#34d399", stroke: "#10b981", label: "Safe" },
+  caution: { fill: "#fbbf24", stroke: "#f59e0b", label: "Caution" },
+  danger:  { fill: "#f87171", stroke: "#ef4444", label: "At Risk" },
+  unknown: { fill: "#1e3a5f", stroke: "#2d4f7c", label: "No Data" },
 };
 
-// State centers and zoom levels
 const STATE_GEO: Record<string, { center: [number, number]; zoom: number }> = {
   AL: { center: [32.8, -86.8], zoom: 7 }, AK: { center: [64.0, -153.0], zoom: 4 },
   AZ: { center: [34.3, -111.7], zoom: 7 }, AR: { center: [34.8, -92.2], zoom: 7 },
@@ -54,7 +54,6 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
   const [stats, setStats] = useState({ safe: 0, caution: 0, danger: 0 });
 
   useEffect(() => {
-    // Reset on state change
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
       mapInstanceRef.current = null;
@@ -65,7 +64,6 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
     async function initMap() {
       try {
         const L = (await import("leaflet")).default;
-
         if (cancelled || !containerRef.current) return;
 
         const geo = STATE_GEO[stateCode] || { center: [39.5, -98.5] as [number, number], zoom: 6 };
@@ -82,12 +80,12 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
         mapInstanceRef.current = map;
 
         L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+          "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
           { subdomains: "abcd", maxZoom: 18 }
         ).addTo(map);
 
         L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+          "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
           { subdomains: "abcd", maxZoom: 18, pane: "overlayPane" }
         ).addTo(map);
 
@@ -98,18 +96,16 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
 
         if (cancelled) return;
 
-        // Fetch county risk data — gracefully degrade if backend is down
         let countyRisks: CountyRisk[] = [];
         try {
           countyRisks = await api.getCountyRisks(stateCode);
         } catch {
-          // Backend unavailable — render map with "no data" styling
+          // Backend unavailable
         }
 
         if (cancelled) return;
 
         if (!geoRes.ok) {
-          // No county GeoJSON for this state — show stats only if we have them
           setStats({
             safe: countyRisks.filter(r => r.risk_level === "safe").length,
             caution: countyRisks.filter(r => r.risk_level === "caution").length,
@@ -139,10 +135,10 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
             const colors = RISK_COLORS[level];
             return {
               fillColor: colors.fill,
-              fillOpacity: level === "unknown" ? 0.12 : 0.4,
+              fillOpacity: level === "unknown" ? 0.08 : 0.35,
               color: colors.stroke,
               weight: 0.8,
-              opacity: 0.4,
+              opacity: level === "unknown" ? 0.25 : 0.7,
             };
           },
           onEachFeature: (feature: any, layer: any) => {
@@ -150,62 +146,72 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
             const risk = riskMap.get(name.toUpperCase());
             const level = risk?.risk_level || "unknown";
             const colors = RISK_COLORS[level];
+            const countyLabel = stateCode === "LA" ? "Parish" : "County";
 
             layer.on({
               mouseover: (e: any) => {
                 e.target.setStyle({
-                  weight: 2.5,
+                  weight: 2,
                   opacity: 1,
-                  fillOpacity: level === "unknown" ? 0.2 : 0.6,
+                  fillOpacity: level === "unknown" ? 0.15 : 0.6,
                 });
                 e.target.bringToFront();
               },
-              mouseout: () => {
-                geoLayer.resetStyle(layer);
-              },
+              mouseout: () => geoLayer.resetStyle(layer),
             });
 
             const zipList = risk?.zip_codes?.length
               ? risk.zip_codes.slice(0, 12).join(", ") + (risk.zip_codes.length > 12 ? ` +${risk.zip_codes.length - 12} more` : "")
               : "";
 
-            const countyLabel = stateCode === "LA" ? "Parish" : "County";
-
             const popupContent = `
-              <div style="font-family:Inter,system-ui,sans-serif;padding:4px 0;min-width:200px;max-width:280px;">
-                <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:6px;">
+              <div style="
+                font-family:'Outfit',system-ui,sans-serif;
+                background:#0f1f3a;
+                border:1px solid #1e3a5f;
+                border-radius:12px;
+                padding:12px 14px;
+                min-width:210px;
+                max-width:280px;
+                box-shadow:0 8px 32px rgba(0,0,0,0.6);
+              ">
+                <div style="font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:6px;letter-spacing:-0.01em;">
                   ${name} ${countyLabel}
                 </div>
-                <div style="display:inline-block;background:${colors.fill}15;color:${colors.stroke};
-                  font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;
-                  text-transform:uppercase;letter-spacing:0.6px;border:1px solid ${colors.fill}30;
-                  margin-bottom:8px;">
-                  ${colors.label}
+                <div style="display:inline-flex;align-items:center;gap:5px;background:${colors.fill}18;
+                  border:1px solid ${colors.fill}40;border-radius:99px;
+                  padding:3px 10px;margin-bottom:9px;">
+                  <span style="width:6px;height:6px;border-radius:50%;background:${colors.fill};display:inline-block;"></span>
+                  <span style="font-size:10px;font-weight:700;color:${colors.fill};
+                    text-transform:uppercase;letter-spacing:0.08em;">
+                    ${colors.label}
+                  </span>
                 </div>
                 ${risk ? `
-                  <div style="font-size:12px;color:#64748b;line-height:1.7;">
-                    <div><strong style="color:#334155">${risk.system_count.toLocaleString()}</strong> water systems</div>
-                    <div><strong style="color:#334155">${risk.population.toLocaleString()}</strong> population served</div>
-                    <div><strong style="color:#334155">${risk.violation_count}</strong> violations (3yr)</div>
+                  <div style="font-size:11px;line-height:1.8;font-family:'JetBrains Mono',monospace;">
+                    <div><span style="color:#94a3b8;">${risk.system_count.toLocaleString()}</span> <span style="color:#475569;">systems</span></div>
+                    <div><span style="color:#94a3b8;">${risk.population.toLocaleString()}</span> <span style="color:#475569;">pop. served</span></div>
+                    <div><span style="color:${risk.violation_count > 0 ? colors.fill : '#64748b'};">${risk.violation_count}</span> <span style="color:#475569;">violations (3yr)</span></div>
                   </div>
                   ${zipList ? `
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
-                      <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
+                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e3a5f;">
+                      <div style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;">
                         ZIP Codes
                       </div>
-                      <div style="font-size:11px;color:#475569;line-height:1.5;word-break:break-all;">
+                      <div style="font-size:10px;color:#64748b;line-height:1.6;word-break:break-all;font-family:'JetBrains Mono',monospace;">
                         ${zipList}
                       </div>
                     </div>
                   ` : ""}
-                ` : '<div style="font-size:12px;color:#94a3b8;">No water quality data available</div>'}
+                ` : '<div style="font-size:11px;color:#475569;">No data available</div>'}
               </div>
             `;
-            layer.bindPopup(popupContent, { maxWidth: 280 });
+            layer.bindPopup(popupContent, { maxWidth: 280, className: "dark-popup" });
             layer.bindTooltip(`${name} ${countyLabel}`, {
               sticky: true,
               direction: "top",
               offset: [0, -8],
+              className: "dark-tooltip",
             });
           },
         });
@@ -222,10 +228,7 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
     }
 
     initMap();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [stateCode, stateName]);
 
   return (
@@ -233,30 +236,34 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
       {onBack && (
         <button
           onClick={onBack}
-          className="mb-3 flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+          className="mb-3 flex items-center gap-1.5 text-xs font-mono font-medium text-brand-400 hover:text-brand-300 transition-colors tracking-wide uppercase"
         >
-          ← Back to US Map
+          <ChevronLeft className="w-3.5 h-3.5" />
+          Back to US Map
         </button>
       )}
-      <div className="relative w-full h-[520px] rounded-2xl overflow-hidden border border-slate-200 shadow-card bg-slate-100">
+      <div
+        className="relative w-full h-[520px] rounded-xl overflow-hidden"
+        style={{ background: "#080f1d" }}
+      >
         {loading && !error && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90">
+          <div className="absolute inset-0 z-10 flex items-center justify-center"
+            style={{ background: "rgba(8,15,29,0.92)" }}>
             <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-[3px] border-brand-200 border-t-brand-600 rounded-full animate-spin" />
-              <span className="text-sm font-medium text-slate-400">
-                Loading {stateName} map...
+              <div className="w-8 h-8 border-[2px] border-brand-900 border-t-brand-400 rounded-full animate-spin" />
+              <span className="text-xs font-mono text-brand-400 tracking-widest uppercase">
+                Loading {stateName}...
               </span>
             </div>
           </div>
         )}
         {error && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/90">
+          <div className="absolute inset-0 z-10 flex items-center justify-center"
+            style={{ background: "rgba(8,15,29,0.92)" }}>
             <div className="text-center">
-              <p className="text-sm text-danger font-medium">{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-2 text-sm text-brand-600 hover:text-brand-700 font-medium"
-              >
+              <p className="text-sm text-red-400 font-medium">{error}</p>
+              <button onClick={() => window.location.reload()}
+                className="mt-2 text-xs text-brand-400 hover:text-brand-300 font-mono">
                 Retry
               </button>
             </div>
@@ -267,9 +274,9 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
 
       {!loading && !error && (
         <div className="flex items-center justify-center gap-8 mt-4">
-          <LegendItem color="bg-safe" label="Safe" count={stats.safe} />
-          <LegendItem color="bg-caution" label="Caution" count={stats.caution} />
-          <LegendItem color="bg-danger" label="At Risk" count={stats.danger} />
+          <LegendItem color="#34d399" label="Safe" count={stats.safe} />
+          <LegendItem color="#fbbf24" label="Caution" count={stats.caution} />
+          <LegendItem color="#f87171" label="At Risk" count={stats.danger} />
         </div>
       )}
     </div>
@@ -278,10 +285,10 @@ export default function StateMap({ stateCode, stateName, onBack }: StateMapProps
 
 function LegendItem({ color, label, count }: { color: string; label: string; count: number }) {
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className={`w-3.5 h-3.5 rounded ${color} shadow-sm`} />
-      <span className="font-medium text-slate-600">{label}</span>
-      <span className="text-slate-300 font-mono text-xs">{count}</span>
+    <div className="flex items-center gap-2">
+      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+      <span className="text-xs font-medium text-slate-400">{label}</span>
+      <span className="text-xs font-mono text-slate-500">{count}</span>
     </div>
   );
 }

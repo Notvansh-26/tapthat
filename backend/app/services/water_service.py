@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case, and_, or_
 
 from app.models import WaterSystem, Violation, ContaminantResult, GeographicArea
 from app.schemas.water import (
@@ -8,6 +8,29 @@ from app.schemas.water import (
     ViolationOut,
     ContaminantOut,
 )
+
+try:
+    import pgeocode
+    _nominatim = pgeocode.Nominatim("us")
+except Exception:
+    _nominatim = None
+
+
+def _lookup_county_state(zip_code: str) -> tuple[str, str] | None:
+    """Return (county, state_code) for a US ZIP code, or None if unknown."""
+    if _nominatim is None:
+        return None
+    try:
+        row = _nominatim.query_postal_code(zip_code)
+        county = row.get("county_name") if hasattr(row, "get") else getattr(row, "county_name", None)
+        state = row.get("state_code") if hasattr(row, "get") else getattr(row, "state_code", None)
+        if county and state and str(county) != "nan":
+            # pgeocode county names often include " County" suffix — strip it
+            county_clean = str(county).replace(" County", "").replace(" Parish", "").strip()
+            return county_clean, str(state).strip()
+    except Exception:
+        pass
+    return None
 
 # State code → full name mapping
 STATE_NAMES = {
@@ -53,16 +76,73 @@ class WaterService:
         self.db = db
 
     def get_zip_report(self, zip_code: str) -> ZipCodeReport | None:
-        # Find water systems serving this ZIP (nationally unique)
+        # Primary: find water systems serving this ZIP via geographic_areas table
         geo_areas = (
             self.db.query(GeographicArea)
             .filter(GeographicArea.zip_code == zip_code)
             .all()
         )
-        if not geo_areas:
+        pwsids = list({g.pwsid for g in geo_areas})
+
+        # Fallback: SDWIS geographic_area coverage is sparse (~58% for TX, etc.)
+        # Use pgeocode to resolve ZIP → county + state, then match by counties_served.
+        if not pwsids:
+            location = _lookup_county_state(zip_code)
+            if location:
+                county, state_code = location
+                systems = (
+                    self.db.query(WaterSystem)
+                    .filter(
+                        WaterSystem.state_code == state_code,
+                        WaterSystem.activity_status == "Active",
+                        WaterSystem.counties_served.ilike(f"%{county}%"),
+                    )
+                    .all()
+                )
+                if not systems:
+                    return None
+                # Build synthetic summaries directly — skip geo_areas join
+                system_summaries = [
+                    WaterSystemSummary(
+                        pwsid=s.pwsid,
+                        name=s.name,
+                        primary_source=s.primary_source,
+                        system_type=s.system_type,
+                        population_served=s.population_served,
+                        counties_served=s.counties_served,
+                        serious_violator=s.serious_violator or False,
+                        violation_count_3yr=s.violation_count_3yr or 0,
+                        health_violation_count_3yr=s.health_violation_count_3yr or 0,
+                        risk_level=_calc_risk_level(s),
+                    )
+                    for s in systems
+                ]
+                fallback_pwsids = [s.pwsid for s in systems]
+                top_contaminants = (
+                    self.db.query(ContaminantResult)
+                    .filter(ContaminantResult.pwsid.in_(fallback_pwsids))
+                    .order_by(ContaminantResult.exceedance_ratio.desc().nullslast())
+                    .limit(10)
+                    .all()
+                )
+                recent_violations = (
+                    self.db.query(Violation)
+                    .filter(Violation.pwsid.in_(fallback_pwsids))
+                    .order_by(Violation.compliance_begin_date.desc().nullslast())
+                    .limit(20)
+                    .all()
+                )
+                total_pop = sum(s.population_served or 0 for s in systems)
+                return ZipCodeReport(
+                    zip_code=zip_code,
+                    water_systems=system_summaries,
+                    total_population_served=total_pop,
+                    overall_risk_level=_overall_risk(systems),
+                    top_contaminants=[ContaminantOut.model_validate(c) for c in top_contaminants],
+                    recent_violations=[ViolationOut.model_validate(v) for v in recent_violations],
+                )
             return None
 
-        pwsids = list({g.pwsid for g in geo_areas})
         systems = (
             self.db.query(WaterSystem)
             .filter(WaterSystem.pwsid.in_(pwsids))
@@ -189,54 +269,41 @@ class WaterService:
         return [ViolationOut.model_validate(v) for v in results]
 
     def get_state_risks(self) -> list[dict]:
-        """Aggregate risk data per state for the national map."""
-        systems = (
-            self.db.query(WaterSystem)
+        """Aggregate risk data per state for the national map — single SQL GROUP BY."""
+        rows = (
+            self.db.query(
+                WaterSystem.state_code,
+                func.count(WaterSystem.pwsid).label("system_count"),
+                func.coalesce(func.sum(WaterSystem.population_served), 0).label("population"),
+                func.coalesce(func.sum(WaterSystem.violation_count_3yr), 0).label("violation_count"),
+                func.bool_or(WaterSystem.serious_violator).label("has_serious"),
+                func.coalesce(func.max(WaterSystem.health_violation_count_3yr), 0).label("max_health_violations"),
+                func.coalesce(func.sum(WaterSystem.violation_count_3yr), 0).label("total_violations"),
+            )
             .filter(
                 WaterSystem.activity_status == "Active",
                 WaterSystem.state_code.isnot(None),
             )
+            .group_by(WaterSystem.state_code)
             .all()
         )
 
-        state_data: dict[str, dict] = {}
-        for s in systems:
-            sc = s.state_code
-            if sc not in state_data:
-                state_data[sc] = {
-                    "system_count": 0,
-                    "population": 0,
-                    "violation_count": 0,
-                    "has_danger": False,
-                    "has_caution": False,
-                }
-            entry = state_data[sc]
-            entry["system_count"] += 1
-            entry["population"] += s.population_served or 0
-            entry["violation_count"] += s.violation_count_3yr or 0
-
-            risk = _calc_risk_level(s)
-            if risk == "danger":
-                entry["has_danger"] = True
-            elif risk == "caution":
-                entry["has_caution"] = True
-
         results = []
-        for sc, entry in state_data.items():
-            if entry["has_danger"]:
+        for row in rows:
+            if row.has_serious or row.max_health_violations >= 3:
                 risk_level = "danger"
-            elif entry["has_caution"]:
+            elif row.total_violations > 0 or row.max_health_violations > 0:
                 risk_level = "caution"
             else:
                 risk_level = "safe"
 
             results.append({
-                "state_code": sc,
-                "state_name": STATE_NAMES.get(sc, sc),
+                "state_code": row.state_code,
+                "state_name": STATE_NAMES.get(row.state_code, row.state_code),
                 "risk_level": risk_level,
-                "system_count": entry["system_count"],
-                "population": entry["population"],
-                "violation_count": entry["violation_count"],
+                "system_count": row.system_count,
+                "population": row.population,
+                "violation_count": row.violation_count,
             })
 
         results.sort(key=lambda r: r["population"], reverse=True)
@@ -245,8 +312,16 @@ class WaterService:
     def get_county_risks(self, state_code: str) -> list[dict]:
         """Aggregate risk data per county for a specific state."""
         state_upper = state_code.upper()
-        systems = (
-            self.db.query(WaterSystem)
+
+        # Fetch only the columns we need — avoids loading all model fields
+        rows = (
+            self.db.query(
+                WaterSystem.counties_served,
+                WaterSystem.population_served,
+                WaterSystem.violation_count_3yr,
+                WaterSystem.health_violation_count_3yr,
+                WaterSystem.serious_violator,
+            )
             .filter(
                 WaterSystem.activity_status == "Active",
                 WaterSystem.state_code == state_upper,
@@ -255,7 +330,7 @@ class WaterService:
             .all()
         )
 
-        # Build county → ZIP mapping
+        # Build county → ZIP mapping in a single distinct query
         county_zips: dict[str, set[str]] = {}
         geo_rows = (
             self.db.query(GeographicArea.county_served, GeographicArea.zip_code)
@@ -269,19 +344,20 @@ class WaterService:
         )
         for county_name, zip_code in geo_rows:
             key = county_name.strip().upper()
-            if key not in county_zips:
-                county_zips[key] = set()
-            county_zips[key].add(zip_code.strip()[:5])
+            county_zips.setdefault(key, set()).add(zip_code.strip()[:5])
 
         county_data: dict[str, dict] = {}
-        for s in systems:
-            counties = [c.strip() for c in s.counties_served.split(",") if c.strip()]
-            risk = _calc_risk_level(s)
+        for counties_served, population, violation_count, health_violations, serious in rows:
+            pop = population or 0
+            viols = violation_count or 0
+            health = health_violations or 0
+            is_danger = bool(serious) or health >= 3
+            is_caution = not is_danger and (viols > 0 or health > 0)
 
-            for county in counties:
-                county_upper = county.upper()
-                if county_upper not in county_data:
-                    county_data[county_upper] = {
+            for county in (c.strip() for c in counties_served.split(",") if c.strip()):
+                key = county.upper()
+                if key not in county_data:
+                    county_data[key] = {
                         "county": county.title(),
                         "system_count": 0,
                         "population": 0,
@@ -289,34 +365,25 @@ class WaterService:
                         "has_danger": False,
                         "has_caution": False,
                     }
-                entry = county_data[county_upper]
+                entry = county_data[key]
                 entry["system_count"] += 1
-                entry["population"] += s.population_served or 0
-                entry["violation_count"] += s.violation_count_3yr or 0
-
-                if risk == "danger":
+                entry["population"] += pop
+                entry["violation_count"] += viols
+                if is_danger:
                     entry["has_danger"] = True
-                elif risk == "caution":
+                elif is_caution:
                     entry["has_caution"] = True
 
         results = []
         for county_upper, entry in county_data.items():
-            if entry["has_danger"]:
-                risk_level = "danger"
-            elif entry["has_caution"]:
-                risk_level = "caution"
-            else:
-                risk_level = "safe"
-
-            zips = sorted(county_zips.get(county_upper, set()))
-
+            risk_level = "danger" if entry["has_danger"] else "caution" if entry["has_caution"] else "safe"
             results.append({
                 "county": entry["county"],
                 "risk_level": risk_level,
                 "system_count": entry["system_count"],
                 "population": entry["population"],
                 "violation_count": entry["violation_count"],
-                "zip_codes": zips,
+                "zip_codes": sorted(county_zips.get(county_upper, set())),
             })
 
         results.sort(key=lambda r: r["population"], reverse=True)

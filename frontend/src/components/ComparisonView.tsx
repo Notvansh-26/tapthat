@@ -5,7 +5,7 @@ import { api, ZipCodeReport } from "@/lib/api";
 import SearchBar from "./SearchBar";
 import WaterQualityCard from "./WaterQualityCard";
 import RiskBadge from "./RiskBadge";
-import { X, ArrowLeftRight, Loader2 } from "lucide-react";
+import { X, Loader2, Plus } from "lucide-react";
 
 export default function ComparisonView() {
   const [zipCodes, setZipCodes] = useState<string[]>([]);
@@ -14,14 +14,8 @@ export default function ComparisonView() {
   const [error, setError] = useState<string | null>(null);
 
   const addZip = (zip: string) => {
-    if (zipCodes.includes(zip)) {
-      setError(`${zip} is already added`);
-      return;
-    }
-    if (zipCodes.length >= 5) {
-      setError("Maximum 5 ZIP codes");
-      return;
-    }
+    if (zipCodes.includes(zip)) { setError(`${zip} is already added`); return; }
+    if (zipCodes.length >= 5) { setError("Maximum 5 ZIP codes"); return; }
     setZipCodes([...zipCodes, zip]);
     setError(null);
   };
@@ -32,10 +26,7 @@ export default function ComparisonView() {
   };
 
   const runComparison = async () => {
-    if (zipCodes.length < 2) {
-      setError("Add at least 2 ZIP codes to compare");
-      return;
-    }
+    if (zipCodes.length < 2) { setError("Add at least 2 ZIP codes to compare"); return; }
     setLoading(true);
     setError(null);
     try {
@@ -49,31 +40,26 @@ export default function ComparisonView() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Input */}
+    <div className="space-y-6">
+      {/* Input card */}
       <div className="card p-6">
-        <div className="flex items-center gap-2.5 mb-5">
-          <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">
-            <ArrowLeftRight className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-900">Add ZIP Codes</h2>
-            <p className="text-xs text-slate-400">Up to 5 US ZIP codes</p>
-          </div>
-        </div>
+        <p className="font-mono text-[10px] text-slate-400 tracking-[0.15em] uppercase mb-4">
+          ZIP Codes · {zipCodes.length}/5 added
+        </p>
 
         {/* ZIP chips */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-5">
           {zipCodes.map((zip) => (
             <span
               key={zip}
               className="inline-flex items-center gap-1.5 bg-brand-50 text-brand-700
-                         font-bold px-3 py-1.5 rounded-lg text-sm border border-brand-100"
+                         font-mono font-bold px-3 py-1.5 rounded-lg text-sm border border-brand-100"
             >
               {zip}
               <button
                 onClick={() => removeZip(zip)}
                 className="hover:text-danger transition-colors ml-0.5"
+                aria-label={`Remove ${zip}`}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -85,7 +71,7 @@ export default function ComparisonView() {
               <SearchBar
                 onSearch={addZip}
                 variant="compact"
-                placeholder={zipCodes.length === 0 ? "Add first ZIP code" : "Add another ZIP"}
+                placeholder={zipCodes.length === 0 ? "Enter first ZIP code" : "Add another ZIP"}
               />
             </div>
           )}
@@ -98,19 +84,21 @@ export default function ComparisonView() {
         <button
           onClick={runComparison}
           disabled={zipCodes.length < 2 || loading}
-          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800
-                     disabled:bg-slate-200 disabled:text-slate-400
+          className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800
+                     disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed
                      text-white font-semibold px-6 py-2.5 rounded-xl transition-all text-sm"
         >
-          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          {loading ? "Comparing..." : "Compare ZIP Codes"}
+          {loading
+            ? <><Loader2 className="w-4 h-4 animate-spin" />Comparing...</>
+            : <><Plus className="w-4 h-4" />Compare</>
+          }
         </button>
       </div>
 
-      {/* Cards */}
+      {/* Cards grid */}
       {reports.length > 0 && (
         <div
-          className="grid gap-6"
+          className="grid gap-5"
           style={{
             gridTemplateColumns: `repeat(${Math.min(reports.length, 3)}, minmax(0, 1fr))`,
           }}
@@ -123,31 +111,29 @@ export default function ComparisonView() {
 
       {/* Comparison table */}
       {reports.length >= 2 && (
-        <div className="card overflow-hidden fade-up">
-          <div className="p-6 pb-0">
-            <h3 className="font-bold text-slate-900">Side-by-Side Comparison</h3>
-            <p className="text-sm text-slate-400 mt-0.5">
-              Key metrics across all selected areas
-            </p>
+        <div className="card overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-100">
+            <p className="font-mono text-[10px] text-slate-400 tracking-[0.15em] uppercase mb-0.5">Analysis</p>
+            <h3 className="font-semibold text-slate-900 text-sm">Side-by-Side Metrics</h3>
           </div>
-          <div className="overflow-x-auto p-6">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                <tr className="border-b border-slate-100">
+                  <th className="text-left py-3.5 px-5 font-mono text-[10px] text-slate-400 uppercase tracking-[0.15em]">
                     Metric
                   </th>
                   {reports.map((r) => (
-                    <th key={r.zip_code} className="text-center py-3 px-4">
-                      <div className="font-bold text-slate-800 text-base">{r.zip_code}</div>
-                      <div className="mt-1">
+                    <th key={r.zip_code} className="text-center py-3.5 px-5">
+                      <div className="font-mono font-bold text-slate-800 text-sm">{r.zip_code}</div>
+                      <div className="mt-1.5">
                         <RiskBadge level={r.overall_risk_level} size="sm" />
                       </div>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-50">
                 <CompareRow
                   label="Population Served"
                   values={reports.map((r) => r.total_population_served.toLocaleString())}
@@ -200,15 +186,15 @@ function CompareRow({
 
   return (
     <tr className="hover:bg-slate-50/50 transition-colors">
-      <td className="py-3 px-4 font-medium text-slate-600">{label}</td>
+      <td className="py-3 px-5 font-mono text-[11px] text-slate-500 uppercase tracking-wider">{label}</td>
       {values.map((v, i) => (
-        <td key={i} className="text-center py-3 px-4">
+        <td key={i} className="text-center py-3 px-5">
           <span
-            className={`font-bold tabular-nums ${
+            className={`font-mono font-bold tabular-nums text-sm ${
               highlight && nums[i] === max && max > 0
                 ? "text-danger"
                 : highlight && nums[i] === 0
-                ? "text-safe-dark"
+                ? "text-emerald-600"
                 : "text-slate-800"
             }`}
           >
